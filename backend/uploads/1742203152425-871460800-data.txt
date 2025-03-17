@@ -1,0 +1,278 @@
+Skip to main content
+Stack Overflow
+About
+Products
+OverflowAI
+Search…
+Home
+Questions
+Tags
+Users
+Companies
+Labs
+Discussions
+Collectives
+Communities for your favorite technologies. Explore all Collectives
+
+Teams
+
+Ask questions, find answers and collaborate at work with Stack Overflow for Teams.
+
+ 
+Invalid ELF Header - Argon2 package
+Asked 3 years, 5 months ago
+Modified 1 year, 1 month ago
+Viewed 6k times
+ Part of AWS Collective
+
+Report this ad
+3
+
+I am running to an error that says "Invalid ELF header" for a package called "argon2". When uploading my code to AWS Lambda through the serverless framework. The code runs perfectly when running locally.
+
+Development on MacOS Big Sur version 11.4
+
+Image of the error I am getting
+
+I've researched a little bit on the error and people are saying to use Docker to compile the packages and then send to Lambda. I haven't worked with Docker much and wanted to explore other options before attempting the docker solution.
+
+Any guidance or help would be much appreciated! I've been stuck on this bug for over a day or two.
+
+node.jsamazon-web-servicesaws-lambdanode-modulesargon2-ffi
+Share
+Improve this question
+Follow
+edited Sep 24, 2021 at 23:44
+John Rotenstein's user avatar
+John Rotenstein
+270k2828 gold badges446446 silver badges530530 bronze badges
+asked Sep 24, 2021 at 18:24
+Michael Remy's user avatar
+Michael Remy
+3311 silver badge44 bronze badges
+Please provide enough code so others can better understand or reproduce the problem. – 
+Community
+Bot
+ CommentedOct 3, 2021 at 12:37
+Add a comment
+4 Answers
+Sorted by:
+
+Highest score (default)
+10
+
+What is going on?
+
+The package you are using (argon2) contains bindings to a C implementation of the argon2 algorithm. In other words, the package itself wraps a library written in C, and makes it accessible inside your node.js environment.
+
+That C package is also shipped with your package, and compiled (or downloaded) when you run npm install argon2. That means that after installing argon2, there is a binary shared library on your file system, that is interfacing with your node environment. Because you are installing on MacOS, the binary will be compiled (or downloaded) for Mac. This means you end up with a MACH-O file (which is the format executables for macOS come in) instead of an ELF file (which is format Linux uses for executables).
+
+Now your Lambda (which runs Linux under the hood) effectively complains, that the executable you've built on your Mac is not a Linux executable.
+
+How do you fix this?
+
+In simple terms, you need a way to npm install that will build or download the argon2 version for Linux. There are two different ways to achieve this. Pick one:
+
+npm install on Linux
+Pretty much as the title says, download and build your dependencies under Linux. You can use a Virtual Machine, or a Docker container to do that. Another option would be to use the AWS build SaaS product (AWS CodeBuild) to do this.
+
+npm install --target_arch=x64 --target_platform=linux --target_libc=glibc on Mac
+Thankfully argon2 comes with support for node-pre-gyp. They effectively provide you with prebuild binaries, which means that you can just pull the linux binaries end do not have to compile them yourself. To do that, thow away your node_modules folder and run npm install --target_arch=x64 --target_platform=linux. This will download the Linux files, instead of the macOs files. You can then push everything into your lambda. Please note that this means your application will not run locally anymore, since your mac cannot run the Linux executable (you would have to npm install again, leaving out the two parameters to get back to the MacOS version).
+
+Please note that there might be packages apart from argon2 that do not support MacOS, in which case you would have to take the first option.
+
+Share
+Improve this answer
+Follow
+edited Sep 24, 2021 at 19:59
+answered Sep 24, 2021 at 19:17
+Daniel Klischies's user avatar
+Daniel Klischies
+1,13588 silver badges1616 bronze badges
+1
+Thank you for such a detailed response and taking the time to explain what is happening. I attempted #2 and got an error. > node-pre-gyp install --fallback-to-build node-pre-gyp ERR! install response status 404 Not Found on github.com/ranisalt/node-argon2/releases/download/v0.28.2/… node-pre-gyp WARN Pre-built binaries not installable for argon2@0.28.2 and node@12.0.0 (node-v72 ABI, unknown) (falling back to source compile with node-gyp) I am using NVM and I've tried node 14 and 12. – 
+Michael Remy
+ CommentedSep 24, 2021 at 19:39 
+Oops, try npm install --target_arch=x64 --target_platform=linux --target_libc=glibc. The error message tells you that it cant find the binary at that location. if you look at the releases page at github.com/ranisalt/node-argon2/releases you can see that there are glibc and musl versions for linux x64, and you need to select one, which that command should do. – 
+Daniel Klischies
+ CommentedSep 24, 2021 at 19:57 
+1
+Thanks for you help. I ended up just switching to Bcryptjs instead of using Argon2 and that ended up resolving my error. – 
+Michael Remy
+ CommentedSep 27, 2021 at 18:33
+Keeping a reference for future github.com/yarnpkg/yarn/issues/2221#issuecomment-1168971270 – 
+abhijithvijayan
+ CommentedJan 1, 2024 at 21:14
+Add a comment
+
+Report this ad
+1
+
+Just to add. To deploy to Lambda you would (eventually) need to send your files in a zip. And to bundle your project efficiently you would need a bundler like Webpack. The problem is, argon2 and any other hash implementations like bcrypt use node-pre-gyp dependency that doesn't work well with bundler. So the options are:
+
+Just zip the entire project and everything inside node_modules. This means including everything that isn't used which can be massive.
+When using Webpack exclude argon2 from the config with the consequence that it has to be manually installed in target environment.
+Use a pure js version of argon2 which is much slower.
+If you use it to manage passwords then you can drop it for a cloud service like AWS KMS that offers secure symmetric keys. However these keys encrypt, not hash so for the better or worse you can decrypt the passwords back to plain text.
+Remember that hashing performance itself is proportional to memory and CPU. So running a hashing algorithm for fast result could mean high Lambda bill.
+
+Share
+Improve this answer
+Follow
+edited Feb 12, 2022 at 3:45
+answered Feb 11, 2022 at 16:51
+inmyth's user avatar
+inmyth
+9,07044 gold badges4949 silver badges5252 bronze badges
+Add a comment
+0
+
+Cause I changed my Operation system and the project before the node modules installed in windows, I just delete the node_modules folder and run npm install again
+
+Share
+Improve this answer
+Follow
+edited May 1, 2023 at 16:26
+Tyler2P's user avatar
+Tyler2P
+2,3703030 gold badges2525 silver badges3232 bronze badges
+answered Apr 29, 2023 at 10:12
+Muhamad Ilham's user avatar
+Muhamad Ilham
+1
+Add a comment
+
+Report this ad
+0
+
+On my own end after running docker-compose build --no-cache , to run npm install without cache. Issue still persist Issue was mainly due to my volume mounting my current directory to the /app on the container . i solved it by doing volume:
+
+./src : /app/src
+that way node_modules was not mounted after being ignored
+
+Share
+Improve this answer
+Follow
+answered Jan 17, 2024 at 12:22
+Adebisi 's user avatar
+Adebisi
+7911 silver badge33 bronze badges
+Add a comment
+Your Answer
+Sign up or log in
+Post as a guest
+Name
+Email
+Required, but never shown
+
+By clicking “Post Your Answer”, you agree to our terms of service and acknowledge you have read our privacy policy.
+
+Start asking to get answers
+
+Find the answer to your question by asking.
+
+Explore related questions
+
+node.jsamazon-web-servicesaws-lambdanode-modulesargon2-ffi
+See similar questions with these tags.
+
+AWS
+Collective
+ This question is in a collective: a subcommunity defined by tags with relevant content and experts.
+The Overflow Blog
+Can climate tech startups address the current crisis?
+What we learned at TDX 2025
+Featured on Meta
+Community Asks Sprint Announcement - March 2025
+Meta Stack Exchange site maintenance scheduled starting Monday, March 17,...
+Is it better to redirect users who attempt to perform actions they can't yet...
+Stacks Editor development and testing
+Policy: Generative AI (e.g., ChatGPT) is banned
+
+Report this ad
+
+Report this ad
+Linked
+0
+Azure functions disappearing from app when changing computers
+Related
+2
+Getting invalid ELF header issue
+45
+"invalid ELF header" when using the nodejs "ref" module on AWS Lambda
+1
+NodeJs Google Compute Engine Invalid ELF Header when using 'gcloud' module
+18
+aws - "Unable to import module 'process': /var/task/numpy/core/multiarray.so: invalid ELF header"
+1
+Aws lambda binary file EACCES error
+8
+AWS Lambda Error: Could not unzip uploaded file
+1
+Not able to load Node JS function in AWS Lambda using Serverless Couchbase Lounge - getting invalid ELF header error
+5
+"Invalid ELF header" using libxmljs on AWS Lambda
+0
+Node.js argon2 Package Will Not Return String
+2
+ELF Invalid error Lambda Connection string
+Hot Network Questions
+Why always one diode takes up all the voltage drop in a series of diodes?
+How exactly did [arcade] Space Invaders get faster with fewer aliens?
+What are the use cases of parallel processing in time series models?
+Is there a simple way to turn a circular array of vertices into a sphere (semi-sphere)
+Consistent Highlight on a Cylinder Regardless of Camera Angle?
+Cache for specific directory over ext4
+"Tipped for promotion"
+Has Russia ever explained its U-turn on going to war with Ukraine?
+Translation of Sefer Yosipon into English, Wars of Alexander Yanai with the Pharisees
+Question about the "integer lattice reachability problem", and whether it can be solved with generating function
+How to introduce an action between sets and an recursive relation?
+How to simulate a Raspberry Pi load in LTSPICE?
+Can we still use the word "tweet" now that Twitter has been rebranded as X?
+Sci-fi TV series with a key-item split into several crystals
+Is there a word for a shift in a road where it remains parallel to its original direction?
+what is the purpose of keeping D, C, B while playing the bottom D on this score?
+Redshift of photons due to gravity by another photon
+Does every non-zero finitely generated ring have a proper left ideal of finite index?
+General Difficulties with Posing Models
+Can an insurance company legally sell an unclaimable policy?
+Do vocalists "tune upward" as do instrumentalists, rather than downward
+How does a professor plan to teach/cover a syllabus for the first time?
+Definite integral returns unevaluated
+Do I ground NC pins?
+ Question feed
+
+Stack Overflow
+Questions
+Help
+Chat
+Products
+Teams
+Advertising
+Talent
+Company
+About
+Press
+Work Here
+Legal
+Privacy Policy
+Terms of Service
+Contact Us
+Cookie Settings
+Cookie Policy
+Stack Exchange Network
+Technology
+Culture & recreation
+Life & arts
+Science
+Professional
+Business
+API
+Data
+Blog
+Facebook
+Twitter
+LinkedIn
+Instagram
+Site design / logo © 2025 Stack Exchange Inc; user contributions licensed under CC BY-SA . rev 2025.3.14.23880

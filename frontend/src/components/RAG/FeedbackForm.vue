@@ -31,6 +31,12 @@
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
           placeholder="Please let us know how we can improve..."
         ></textarea>
+        <button
+          @click="submitFinalFeedback"
+          class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-md"
+        >
+          Submit
+        </button>
       </div>
     </div>
   </template>
@@ -52,15 +58,32 @@
   const comment = ref('');
   
   const submitFeedback = async (helpful: boolean) => {
+    isHelpful.value = helpful;
+    
+    if (helpful) {
+      try {
+        await axiosInstance.post('/rag/feedback', {
+          queryId: props.queryId,
+          isHelpful: helpful,
+          comment: ''
+        });
+
+        showToast('Thank you for your feedback!', 'success');
+        emit('feedbackSubmitted');
+      } catch (error) {
+        showToast('Failed to submit feedback', 'error');
+      }
+    }
+  };
+
+  const submitFinalFeedback = async () => {
     try {
-      isHelpful.value = helpful;
-      
       await axiosInstance.post('/rag/feedback', {
         queryId: props.queryId,
-        isHelpful: helpful,
+        isHelpful: false,
         comment: comment.value
       });
-  
+
       showToast('Thank you for your feedback!', 'success');
       emit('feedbackSubmitted');
     } catch (error) {
